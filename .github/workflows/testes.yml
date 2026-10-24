@@ -15,6 +15,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Instalar SDK MCP oficial
+        run: python -m pip install -r requirements.txt
+      - name: Verificar carregamento do servidor MCP
+        run: python -c "import servidor; assert servidor.mcp is not None"
       - name: Verificar sintaxe
         run: python -m compileall -q core.py servidor.py tests
       - name: Testar logica de execucao
