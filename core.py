@@ -11,6 +11,8 @@ import tempfile
 import time
 from pathlib import Path
 
+import politica
+
 LIMITE_COMANDO = 8000
 LIMITE_SAIDA_BYTES = 12000
 TIMEOUT_MAXIMO = 90
@@ -27,6 +29,7 @@ def estado() -> dict:
         "sistema": "Windows" if os.name == "nt" else "Nao Windows",
         "terminal_habilitado": os.environ.get("MEU_PC_HABILITADO") == "1",
         "transporte": "stdio (por Secure MCP Tunnel)",
+        "politica": "comando_exato_uma_execucao",
     }
 
 
@@ -64,6 +67,19 @@ def preparar(comando: str, diretorio: str = "", timeout_segundos: int = 30,
             return _erro("diretorio_invalido", "O diretorio de trabalho nao existe.")
     except (OSError, ValueError):
         return _erro("diretorio_invalido", "Nao foi possivel acessar o diretorio de trabalho.")
+
+    # Uma validacao unica protege tanto terminal quanto terminal_iniciar.
+    # Nao usar filtros de texto: PowerShell arbitrario exige aprovacao local exata.
+    if not politica.permitir(comando, str(pasta)):
+        return {
+            "ok": False,
+            "erro": "aprovacao_local_necessaria",
+            "mensagem": (
+                "Comando nao autorizado. No proprio Windows execute autorizar.py "
+                "e confirme o comando exato; a permissao vale por 120 segundos e um uso."
+            ),
+            "assinatura": politica.assinatura(comando, str(pasta)),
+        }
 
     script = (
         "$ErrorActionPreference = 'Stop'\n"
