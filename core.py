@@ -85,7 +85,7 @@ def preparar(comando: str, diretorio: str = "", timeout_segundos: int = 30,
 
 def encerrar_arvore(processo) -> None:
     """Tenta encerrar processo e filhos Windows; nunca aceita PID arbitrario."""
-    if processo.poll() is not None:
+    if hasattr(processo, "poll") and processo.poll() is not None:
         return
     try:
         subprocess.run(
@@ -96,7 +96,7 @@ def encerrar_arvore(processo) -> None:
     except (OSError, subprocess.SubprocessError):
         pass
     try:
-        if processo.poll() is None:
+        if not hasattr(processo, "poll") or processo.poll() is None:
             processo.kill()
     except (OSError, ProcessLookupError):
         pass
