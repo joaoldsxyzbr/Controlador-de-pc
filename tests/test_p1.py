@@ -103,5 +103,21 @@ class TestePolitica(unittest.TestCase):
                 politica.conceder(valor, str(self.pasta))
 
 
+
+@unittest.skipUnless(os.name == "nt", "Execucao end-to-end exige Windows")
+class TesteWindowsAprovacaoReal(unittest.TestCase):
+    def test_aprovar_executar_uma_vez_e_bloquear_repeticao(self):
+        comando = "Write-Output 'P1-AUTORIZACAO-OK'"
+        with tempfile.TemporaryDirectory() as pasta, \
+             mock.patch.object(politica, "_pasta_aprovacoes", return_value=Path(pasta)), \
+             mock.patch.dict(os.environ, {"MEU_PC_HABILITADO": "1"}):
+            politica.conceder(comando, str(Path.home().resolve()))
+            resposta = core.executar(comando, timeout_segundos=20)
+            self.assertTrue(resposta["ok"], resposta)
+            self.assertIn("P1-AUTORIZACAO-OK", resposta["stdout"])
+            repeticao = core.executar(comando, timeout_segundos=20)
+            self.assertEqual(repeticao["erro"], "aprovacao_local_necessaria")
+
+
 if __name__ == "__main__":
     unittest.main()
