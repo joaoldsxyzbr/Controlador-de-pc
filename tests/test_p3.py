@@ -73,6 +73,30 @@ class TesteAprendizadoP3(unittest.TestCase):
         ))
         self.assertTrue(avaliacao_ia.sem_regressao(referencia, referencia))
 
+    def test_p3_preserva_patamar_aprovado_mesmo_que_p2_nao_regrida(self):
+        import avaliacao_ia
+        resultado = {
+            "conhecidos": 21, "acertos_conhecidos": 18,
+            "desconhecidos": 5, "falsos_positivos_desconhecidos": 0,
+        }
+        self.assertFalse(avaliacao_ia.preserva_qualidade_p3(resultado))
+        resultado["acertos_conhecidos"] = 19
+        self.assertTrue(avaliacao_ia.preserva_qualidade_p3(resultado))
+        resultado["falsos_positivos_desconhecidos"] = 1
+        self.assertFalse(avaliacao_ia.preserva_qualidade_p3(resultado))
+
+    def test_mcp_oferece_relatorio_agregado_sem_acessar_pc(self):
+        import servidor
+        with mock.patch("subprocess.Popen") as popen, \
+             mock.patch("politica.conceder") as conceder:
+            resultado = servidor.ia_qualidade()
+        self.assertTrue(resultado["ok"], resultado)
+        self.assertTrue(resultado["qualidade_p3_preservada"])
+        self.assertEqual(resultado["candidato_p3"]["acertos_conhecidos"], 19)
+        self.assertNotIn("QuotaExceeded", str(resultado))
+        popen.assert_not_called()
+        conceder.assert_not_called()
+
     def test_classificador_permanece_sem_execucao_e_sem_registro_automatico(self):
         with mock.patch("subprocess.Popen") as processo, \
              mock.patch("politica.conceder") as conceder:
