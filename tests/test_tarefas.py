@@ -112,6 +112,16 @@ class TesteWindowsReal(unittest.TestCase):
         self.assertTrue(r["ok"], r)
         self.assertIn("P0-WINDOWS-OK", r["stdout"])
 
+    def test_tarefa_powershell_real(self):
+        g = Gerenciador()
+        self.addCleanup(g.encerrar_todos)
+        with mock.patch.dict(os.environ, {"MEU_PC_HABILITADO": "1"}):
+            tarefa = g.iniciar("Write-Output 'P0-ASINCRONO-WINDOWS-OK'", timeout_segundos=15)
+        self.assertTrue(tarefa["ok"], tarefa)
+        retorno = esperar(g, tarefa["id"], limite=20)
+        self.assertEqual(retorno["status"], "concluido", retorno)
+        self.assertIn("P0-ASINCRONO-WINDOWS-OK", retorno["stdout"])
+
 
 if __name__ == "__main__":
     unittest.main()
