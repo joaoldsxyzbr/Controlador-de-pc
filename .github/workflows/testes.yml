@@ -24,6 +24,8 @@ jobs:
       - name: Verificar carregamento do servidor MCP
         run: python -c "import servidor; assert servidor.mcp is not None"
       - name: Verificar sintaxe
-        run: python -m compileall -q core.py servidor.py tarefas.py politica.py autorizar.py mini_ia.py tests
+        run: python -m compileall -q core.py servidor.py tarefas.py politica.py autorizar.py mini_ia.py aprendizado.py avaliacao_ia.py tests
       - name: Testar logica de execucao
         run: python -m unittest discover -s tests -v
+      - name: Avaliar mini IA contra referencia P2 (sem regressao)
+        run: python -m avaliacao_ia

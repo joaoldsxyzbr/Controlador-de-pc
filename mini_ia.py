@@ -6,12 +6,13 @@ nao consulta rede, nao salva entradas e nao modifica a politica de seguranca.
 """
 
 from collections import Counter
+import aprendizado
 from functools import lru_cache
 import math
 import re
 
 LIMITE_TEXTO = 12000
-VERSAO = "p2-naive-bayes-1"
+VERSAO = "p3-naive-bayes-2"
 
 # Exemplos criados para o projeto; NAO sao logs reais do computador.
 TREINO = {
@@ -140,17 +141,28 @@ def _tokens(texto: str) -> set[str]:
     return {t for t in TERMOS.findall(texto.casefold()) if len(t) > 2 and t not in STOPWORDS}
 
 
-@lru_cache(maxsize=1)
-def _modelo():
+def _montar_modelo(extras: tuple[tuple[str, str], ...] = ()):
+    """Constroi os pesos com corpus P2 e exemplos revisados do P3."""
     contagens = {categoria: Counter() for categoria in TREINO}
     for categoria, frases in TREINO.items():
         for frase in frases:
             contagens[categoria].update(_tokens(frase))
+    for categoria, frase in extras:
+        if categoria not in contagens:
+            raise ValueError("Categoria desconhecida.")
+        contagens[categoria].update(_tokens(frase))
     vocabulario = set().union(*(set(x) for x in contagens.values()))
     total = {classe: sum(cont.values()) for classe, cont in contagens.items()}
-    # Quantas categorias empregam cada token (nao documentos).
-    abrangencia = {token: sum(token in ct for ct in contagens.values()) for token in vocabulario}
+    abrangencia = {token: sum(token in ct for ct in contagens.values())
+                   for token in vocabulario}
     return contagens, total, vocabulario, abrangencia
+
+
+@lru_cache(maxsize=1)
+def _modelo():
+    # Somente os dados estaticos versionados entram na inferencia.
+    extras = aprendizado.carregar_exemplos(set(TREINO))
+    return _montar_modelo(extras)
 
 
 def _inconclusivo() -> dict:
@@ -163,7 +175,8 @@ def _inconclusivo() -> dict:
     }
 
 
-def analisar(texto: str, codigo_saida: int | None = None, tempo_esgotado: bool = False) -> dict:
+def analisar(texto: str, codigo_saida: int | None = None, tempo_esgotado: bool = False,
+            *, _modelo_avaliacao=None) -> dict:
     """Interpreta texto fornecido pelo chamador, sem I/O nem efeitos externos.
 
     Classificacao e hipotese (nao confirmacao de causa), inclusive no score alto.
@@ -186,7 +199,7 @@ def analisar(texto: str, codigo_saida: int | None = None, tempo_esgotado: bool =
         }
 
     termos = _tokens(texto)
-    contagens, total, vocabulario, abrangencia = _modelo()
+    contagens, total, vocabulario, abrangencia = (_modelo_avaliacao if _modelo_avaliacao is not None else _modelo())
     encontrados = termos & vocabulario
     if len(encontrados) < 2:
         return _inconclusivo()

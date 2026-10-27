@@ -1,0 +1,62 @@
+{
+  "versao": 1,
+  "origem": "sintetico-curado-em-pr",
+  "exemplos": [
+    {
+      "categoria": "acesso_negado",
+      "texto": "ACL authorization refused permissions insufficient"
+    },
+    {
+      "categoria": "acesso_negado",
+      "texto": "ACL access control prohibits unauthorized read"
+    },
+    {
+      "categoria": "caminho_ausente",
+      "texto": "DirectoryNotFoundException destination missing in filesystem"
+    },
+    {
+      "categoria": "caminho_ausente",
+      "texto": "DirectoryNotFoundException folder removed from filesystem"
+    },
+    {
+      "categoria": "comando_desconhecido",
+      "texto": "ExecutableNotFound executable absent from PATH"
+    },
+    {
+      "categoria": "comando_desconhecido",
+      "texto": "ExecutableNotFound binary missing from PATH"
+    },
+    {
+      "categoria": "rede_indisponivel",
+      "texto": "HostUnreachable gateway unavailable network connection"
+    },
+    {
+      "categoria": "rede_indisponivel",
+      "texto": "HostUnreachable network gateway unreachable"
+    },
+    {
+      "categoria": "modulo_ausente",
+      "texto": "DependencyNotFound required dependency missing from installation"
+    },
+    {
+      "categoria": "modulo_ausente",
+      "texto": "DependencyNotFound component missing required dependency"
+    },
+    {
+      "categoria": "disco_cheio",
+      "texto": "QuotaExceeded storage volume quota reached"
+    },
+    {
+      "categoria": "disco_cheio",
+      "texto": "QuotaExceeded volume capacity limit reached"
+    },
+    {
+      "categoria": "politica_execucao",
+      "texto": "ScriptBlocked security restriction prohibits unsigned script"
+    },
+    {
+      "categoria": "politica_execucao",
+      "texto": "ScriptBlocked unsigned script restricted by security policy"
+    }
+  ]
+}

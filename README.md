@@ -7,6 +7,7 @@ Controle seu próprio Windows pelo ChatGPT usando **Python**, o **SDK MCP oficia
 - **diagnostico**: confirma sistema, disponibilidade do terminal e politica de autorizacao.
 - **ia_analisar_erro**: mini IA offline para classificar possiveis erros PowerShell, sem executar comandos.
 - **ia_analisar_tarefa**: interpreta uma tarefa P0 existente, sem devolver sua saida bruta.
+- **ia_qualidade**: compara modelos P2/P3 em exemplos sintéticos, sem coletar logs ou executar comandos.
 - **consulta_segura**: consultas de somente leitura e sem parametros livres (`sistema`, `memoria`, `processos`, `discos`).
 - **terminal**: executa PowerShell sincrono (1 a 90 segundos), com saida, codigo de retorno e duracao.
 - **terminal_iniciar**: executa tarefa em segundo plano (1 a 600 segundos), com ID para acompanhamento.
@@ -74,6 +75,9 @@ Pré-requisitos: Windows 10/11, Python 3.11+, acesso a MCPs personalizados no Ch
 - `core.py`: executa PowerShell com autorização local, timeout e limite de saída.
 - `politica.py`: autorizações de uso único e catálogo restrito.
 - `mini_ia.py`: modelo estatistico offline para hipotese de causas de falhas, sem dependencias novas.
+- `aprendizado.py`: carrega apenas exemplos curados em PR com validação de formato e sinais óbvios de dados sensíveis.
+- `avaliacao_ia.py`: mede indicadores, separa treino/avaliação e impede regressão no CI.
+- `dados/treino_curado.json` e `dados/avaliacao.json`: amostras sintéticas separadas.
 - `autorizar.py`: confirmação interativa executada localmente no Windows.
 - `tarefas.py`: motor de tarefas P0.
 - `tests/test_core.py`: testes unitários sem comandos no Windows.
@@ -226,3 +230,59 @@ com conjuntos independentes e anonimizar quaisquer exemplos novos.
 
 **Deploy:** implementar/testar/abrir PR no GitHub primeiro. O computador
 do usuario nao recebe a mudanca sem solicitacao especifica.
+
+
+## P3 — Aprendizado revisado e qualidade mensuravel
+
+O P3 continua usando o classificador estatistico Naive Bayes (nao LLM,
+nao rede neural). Ele agora utiliza o treino de referencia do P2
+(49 exemplos) junto de **14 novos exemplos sinteticos**, definidos em
+`dados/treino_curado.json`. O dataset adicional e lido localmente na
+primeira classificacao e permanece em memoria ate reiniciar o servidor.
+
+### Resultados medidos no CI
+
+No conjunto separado de `dados/avaliacao.json`, com 21 exemplos conhecidos
+e 5 fora do dominio:
+
+| Indicador | Referencia P2 | Candidato P3 |
+| --- | ---: | ---: |
+| Acertos entre erros conhecidos | 12/21 (57,1%) | 19/21 (90,5%) |
+| Precisao entre erros classificados | 92,3% | 95,0% |
+| Cobertura dos erros conhecidos | 61,9% | 95,2% |
+| Casos fora do dominio rejeitados | 5/5 | 5/5 |
+
+**Estes numeros sao somente para frases sinteticas, nao comprovam
+qualidade equivalente em erros reais do Windows.** As frases de teste
+foram criadas para exercitar o vocabulario novo; a qualidade em producao
+precisara ser medida com exemplos diversos, legalmente obtidos,
+anonimizados e revisados, em outra etapa.
+
+Execute `python -m avaliacao_ia` para produzir um relatorio **somente com
+metricas agregadas**. O CI (Windows + Linux) rejeita uma alteracao se ela
+piorar em relacao ao P2 ou cair abaixo do patamar demonstrado pelo P3:
+19 acertos de 21 e zero falsos positivos nos cinco casos fora do dominio.
+
+A ferramenta MCP `ia_qualidade()` informa estas mesmas metricas
+estaticas sem ler arquivos pessoais nem executar comandos.
+
+### Como evoluir a mini IA com seguranca
+
+1. Criar branch no GitHub e preparar **frases de erro sinteticas**,
+   generalizadas e sem nomes de pessoas, enderecos, tokens ou caminhos
+   pessoais; jamais copiar o stderr original para o repositorio.
+2. Editar `dados/treino_curado.json` com `categoria` e `texto`;
+   o programa recusa categorias invalidas, duplicatas, campos extras,
+   dados grandes e algumas sequencias que sugerem segredos. Esses
+   filtros **nao garantem anonimato** e a revisao humana e obrigatoria.
+3. Manter a avaliacao em `dados/avaliacao.json` separada do treino,
+   sem copiar frases para ambos. As metricas devem ser calculadas
+   antes/depois. Se ampliar o conjunto de avaliacao, discutir e atualizar
+   conscientemente os limites de qualidade e a linha de base no PR.
+4. Exigir CI aprovado e revisar o diff antes de fazer merge. Nenhuma
+   mudanca altera a instalacao local automaticamente.
+
+**O P3 nao guarda logs, nao faz telemetria, nao coleta erros, nao
+treina automaticamente, nao executa correcoes e nao altera permissoes.**
+A politica P1 continua protegendo comandos arbitrarios. Todo
+aperfeicoamento e rastreavel por commit/PR no GitHub.
