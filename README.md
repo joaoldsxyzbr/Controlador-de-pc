@@ -5,6 +5,8 @@ Controle seu próprio Windows pelo ChatGPT usando **Python**, o **SDK MCP oficia
 ## Ferramentas
 
 - **diagnostico**: confirma sistema, disponibilidade do terminal e politica de autorizacao.
+- **ia_analisar_erro**: mini IA offline para classificar possiveis erros PowerShell, sem executar comandos.
+- **ia_analisar_tarefa**: interpreta uma tarefa P0 existente, sem devolver sua saida bruta.
 - **consulta_segura**: consultas de somente leitura e sem parametros livres (`sistema`, `memoria`, `processos`, `discos`).
 - **terminal**: executa PowerShell sincrono (1 a 90 segundos), com saida, codigo de retorno e duracao.
 - **terminal_iniciar**: executa tarefa em segundo plano (1 a 600 segundos), com ID para acompanhamento.
@@ -71,6 +73,7 @@ Pré-requisitos: Windows 10/11, Python 3.11+, acesso a MCPs personalizados no Ch
 - `servidor.py`: ferramentas do MCP.
 - `core.py`: executa PowerShell com autorização local, timeout e limite de saída.
 - `politica.py`: autorizações de uso único e catálogo restrito.
+- `mini_ia.py`: modelo estatistico offline para hipotese de causas de falhas, sem dependencias novas.
 - `autorizar.py`: confirmação interativa executada localmente no Windows.
 - `tarefas.py`: motor de tarefas P0.
 - `tests/test_core.py`: testes unitários sem comandos no Windows.
@@ -167,3 +170,54 @@ e reinicia-lo.
 O CI testa expiracao, negacao por padrao, uso unico, corrida entre
 solicitacoes simultaneas e bloqueio de tarefas; tambem valida uma
 execucao PowerShell real no Windows com aprovacao consumida.
+
+
+## P2 — Mini IA especializada em terminal
+
+A mini IA P2 e um **classificador estatistico supervisionado Naive Bayes**,
+em Python nativo. Nao e um LLM, nao usa rede neural e nao aprende sozinho.
+Escolhemos este ponto de partida porque a base atual de exemplos e pequena:
+um modelo neural treinado do zero provavelmente seria menos confiavel sem
+dados reais de qualidade. Ha 49 exemplos de treinamento ficticios/versionados
+(7 categorias com 7 amostras cada) e nenhum dado privado do usuario.
+
+Ela roda **integralmente offline**, sem novos pacotes, GPU, servidor, API,
+persistencia, telemetria ou alteracao de permissoes. O classificador e
+conservador: quando ha poucos sinais independentes de uma categoria, retorna
+`inconclusivo`. `confianca` e somente um grau de correspondencia
+heuristico, **nao probabilidade calibrada de acerto**.
+
+Ferramentas MCP:
+
+- `ia_analisar_erro(texto, codigo_saida?, tempo_esgotado?)`: recebe ate
+  12 mil caracteres. Nunca devolve o texto original; classifica em
+  `acesso_negado`, `caminho_ausente`, `comando_desconhecido`,
+  `rede_indisponivel`, `modulo_ausente`, `disco_cheio`,
+  `politica_execucao`, `tempo_esgotado` ou `inconclusivo`.
+- `ia_analisar_tarefa(id)`: examina a saida ja armazenada na memoria
+  de uma tarefa iniciada pelo P0, sem expor stdout/stderr no resultado da
+  analise. Quando esta em execucao, retorna `aguardando`.
+
+As respostas incluem `categoria`, `confianca`, `origem`, `explicacao`,
+`proximo_passo` e eventualmente um identificador `consulta_segura` para
+diagnostico **predefinido**; nenhuma resposta e uma ordem de execucao.
+No caso de `disco_cheio`, por exemplo, a mini IA sugere
+`consulta_segura(tipo="discos")` e nao apaga arquivos.
+
+**A mini IA nao executa, aprova, instala, corrige nem repete comandos.**
+A politica P1 continua sendo a unica porta para PowerShell arbitrario.
+Saidas de comandos, arquivos e mensagens de erro podem conter dados
+privados ou tentativas de instrucao; sao tratados apenas como dados.
+
+### Testes e limites
+
+O CI executa testes de categorizacao em portugues/ingles, recusa de
+entradas desconhecidas, entradas excessivas, injeções de instrucao,
+ausencia de vazamento de texto, isolamento da politica P1, integracao
+das ferramentas MCP e testes P0/P1 existentes em Linux e Windows.
+Testes com amostras controladas nao comprovam qualidade em todos os
+erros reais do Windows. Antes de expandir o modelo, medir falsos positivos
+com conjuntos independentes e anonimizar quaisquer exemplos novos.
+
+**Deploy:** implementar/testar/abrir PR no GitHub primeiro. O computador
+do usuario nao recebe a mudanca sem solicitacao especifica.
