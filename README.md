@@ -1,11 +1,15 @@
-# Meu PC
+# Controlador de PC
 
 Controle seu próprio Windows pelo ChatGPT usando **Python**, o **SDK MCP oficial** e o **Secure MCP Tunnel da OpenAI**. Não há servidor web nem portas de entrada expostas.
 
 ## Ferramentas
 
 - **diagnostico**: confirma sistema e disponibilidade do terminal.
-- **terminal**: executa comandos PowerShell com diretório opcional, timeout de 1 a 90 segundos, saída e código de retorno.
+- **terminal**: executa PowerShell sincrono (1 a 90 segundos), com saida, codigo de retorno e duracao.
+- **terminal_iniciar**: executa tarefa em segundo plano (1 a 600 segundos), com ID para acompanhamento.
+- **terminal_consultar**: consulta estado, saida parcial e resultado final da tarefa.
+- **terminal_cancelar**: interrompe tarefa iniciada por este processo MCP.
+- **terminal_tarefas**: lista tarefas recentes sem mostrar comandos ou saidas.
 
 O terminal permite manipular arquivos, abrir programas, consultar processos e executar ferramentas do Windows, sempre com os privilégios do usuário que iniciou o agente.
 
@@ -72,3 +76,44 @@ Pré-requisitos: Windows 10/11, Python 3.11+, acesso a MCPs personalizados no Ch
 ```
 
 Documentação: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels e https://github.com/openai/tunnel-client/blob/master/docs/onboarding.md
+
+
+## P0 — Motor de terminal
+
+O MCP oferece dois modos. Use `terminal` para chamadas curtas e `terminal_iniciar`
+para comandos longos; consulte periodicamente com `terminal_consultar`, ou interrompa
+com `terminal_cancelar`. Nunca repita automaticamente um comando que possa produzir
+efeitos duplicados.
+
+Os retornos das tarefas incluem `id`, `status`, `stdout`, `stderr`,
+`codigo_saida`, `tempo_esgotado`, `saida_truncada` e `duracao_ms`.
+Estados: `executando`, `concluido`, `falhou`, `cancelado` e `tempo_esgotado`.
+O indicador `ok` fica nulo enquanto a tarefa nao termina.
+
+**Limites:** ate 3 tarefas simultaneas; timeout de 1 a 600 segundos;
+saidas de ate 12 KiB **por fluxo** (stdout e stderr), drenadas continuamente
+sem acumular toda a saida na memoria. Tarefas concluidas permanecem consultaveis
+por ate 10 minutos (historico limitado a 24). Os estados sao mantidos somente
+em memoria; reiniciar o MCP perde os IDs e resultados, e uma interrupcao forcada
+do servidor pode deixar processos independentes ativos. O encerramento da arvore
+usa `taskkill /T /F` em Windows, com fallback para o processo principal.
+
+O modo sincrono existente permanece compatível. Sua saida de resposta e limitada
+a 12 KiB por fluxo, mas sua captura temporaria pode usar espaco em disco enquanto
+o comando esta rodando. Para comandos de grande saida, prefira tarefas assincronas.
+
+**Atencao:** nenhuma das ferramentas isola o comando em sandbox. Todas herdam as
+permissoes do usuario Windows; confirme operacoes destrutivas, mudancas de seguranca
+e transferencias de dados antes de executa-las. Nao ha telemetria propria nem
+persistencia de logs. A mini IA e outros recursos ficam fora do escopo do P0.
+
+### Validacao
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m compileall -q core.py servidor.py tarefas.py tests
+```
+
+O CI executa os testes de unidade no Linux e no Windows e um smoke test com
+PowerShell real no Windows. Um CI verde nao comprova automaticamente a reconexao
+do plugin no ChatGPT apos atualizar o servidor local.
