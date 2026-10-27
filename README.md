@@ -39,8 +39,8 @@ Pré-requisitos: Windows 10/11, Python 3.11+, acesso a MCPs personalizados no Ch
 4. Prepare o comando do MCP com caminhos absolutos e configure o túnel:
 
    ```powershell
-   $python = (Resolve-Path ".\.venv\Scripts\python.exe").Path
-   $servidor = (Resolve-Path ".\servidor.py").Path
+   $python = (Resolve-Path ".\.venv\Scripts\python.exe").Path.Replace([char]92, [char]47)
+   $servidor = (Resolve-Path ".\servidor.py").Path.Replace([char]92, [char]47)
    $comandoMcp = '"' + $python + '" "' + $servidor + '"'
    tunnel-client init --sample sample_mcp_stdio_local --profile meu-pc --tunnel-id tunnel_SEU_ID --mcp-command $comandoMcp
    tunnel-client doctor --profile meu-pc --explain
