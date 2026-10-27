@@ -8,6 +8,7 @@ import unittest
 from unittest import mock
 
 import core
+import politica
 from tarefas import Gerenciador, MAX_ATIVAS
 
 
@@ -107,7 +108,8 @@ class TesteTarefas(unittest.TestCase):
 @unittest.skipUnless(os.name == "nt", "Smoke test exige Windows real")
 class TesteWindowsReal(unittest.TestCase):
     def test_powershell_real(self):
-        with mock.patch.dict(os.environ, {"MEU_PC_HABILITADO": "1"}):
+        with mock.patch.dict(os.environ, {"MEU_PC_HABILITADO": "1"}), \
+             mock.patch.object(politica, "permitir", return_value=True):
             r = core.executar("Write-Output 'P0-WINDOWS-OK'", timeout_segundos=15)
         self.assertTrue(r["ok"], r)
         self.assertIn("P0-WINDOWS-OK", r["stdout"])
@@ -115,7 +117,8 @@ class TesteWindowsReal(unittest.TestCase):
     def test_tarefa_powershell_real(self):
         g = Gerenciador()
         self.addCleanup(g.encerrar_todos)
-        with mock.patch.dict(os.environ, {"MEU_PC_HABILITADO": "1"}):
+        with mock.patch.dict(os.environ, {"MEU_PC_HABILITADO": "1"}), \
+             mock.patch.object(politica, "permitir", return_value=True):
             tarefa = g.iniciar("Write-Output 'P0-ASINCRONO-WINDOWS-OK'", timeout_segundos=15)
         self.assertTrue(tarefa["ok"], tarefa)
         retorno = esperar(g, tarefa["id"], limite=20)
