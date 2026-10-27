@@ -4,14 +4,15 @@ Controle seu próprio Windows pelo ChatGPT usando **Python**, o **SDK MCP oficia
 
 ## Ferramentas
 
-- **diagnostico**: confirma sistema e disponibilidade do terminal.
+- **diagnostico**: confirma sistema, disponibilidade do terminal e politica de autorizacao.
+- **consulta_segura**: consultas de somente leitura e sem parametros livres (`sistema`, `memoria`, `processos`, `discos`).
 - **terminal**: executa PowerShell sincrono (1 a 90 segundos), com saida, codigo de retorno e duracao.
 - **terminal_iniciar**: executa tarefa em segundo plano (1 a 600 segundos), com ID para acompanhamento.
 - **terminal_consultar**: consulta estado, saida parcial e resultado final da tarefa.
 - **terminal_cancelar**: interrompe tarefa iniciada por este processo MCP.
 - **terminal_tarefas**: lista tarefas recentes sem mostrar comandos ou saidas.
 
-O terminal permite manipular arquivos, abrir programas, consultar processos e executar ferramentas do Windows, sempre com os privilégios do usuário que iniciou o agente.
+O terminal consegue manipular arquivos, programas e processos com os privilegios do usuario Windows, **mas o P1 bloqueia comandos livres ate receber aprovacao local especifica**.
 
 ## Instalação no Windows
 
@@ -30,7 +31,9 @@ Pré-requisitos: Windows 10/11, Python 3.11+, acesso a MCPs personalizados no Ch
 
    ```powershell
    $env:MEU_PC_HABILITADO = "1"
-   $env:CONTROL_PLANE_API_KEY = Read-Host "Chave de runtime do tunel"
+   $chave = Read-Host "Chave de runtime do tunel" -AsSecureString
+   $env:CONTROL_PLANE_API_KEY = [System.Net.NetworkCredential]::new("", $chave).Password
+   Remove-Variable chave
    ```
 
 4. Prepare o comando do MCP com caminhos absolutos e configure o túnel:
@@ -54,10 +57,10 @@ Pré-requisitos: Windows 10/11, Python 3.11+, acesso a MCPs personalizados no Ch
 
 **Este projeto executa comandos arbitrários e não é sandbox.** O túnel evita expor portas, mas não torna os comandos inofensivos.
 
-- A ferramenta de terminal nasce **desabilitada**. Ela só funciona quando o processo local recebe `MEU_PC_HABILITADO=1`. Enquanto habilitada, não pede confirmação local por comando.
+- O terminal nasce **desabilitado** e requer `MEU_PC_HABILITADO=1`. **No P1, todo PowerShell livre exige aprovação interativa no próprio Windows, vinculada ao texto exato e diretório, por um único uso em até 120 segundos.**
 - Não execute como administrador. Não compartilhe esse plugin nem o túnel com terceiros.
-- Antes de operações destrutivas, mudanças críticas ou envio de arquivos, confirme a intenção do usuário. Essa instrução ao modelo não substitui isolamento de sistema.
-- Não há telemetria própria ou log local dos comandos. A OpenAI pode processar comandos e resultados conforme suas políticas.
+- Confirme o conteúdo exato no utilitário local `autorizar.py`. O ChatGPT não pode aprovar via ferramenta MCP; a política não é sandbox e não impede que um comando já autorizado inicie outros processos ou altere arquivos.
+- Não há telemetria própria nem log de comandos. O P1 grava somente a assinatura SHA-256 do comando/diretório e prazo de validade em `LOCALAPPDATA`, consumidos no primeiro uso; a OpenAI pode processar comandos e resultados conforme suas políticas.
 - Segredos de runtime da OpenAI/túnel são removidos do ambiente dos processos PowerShell filhos; outros arquivos/segredos acessíveis ao usuário Windows continuam sujeitos aos comandos autorizados.
 - O retorno é limitado a 12 KiB por fluxo. Comandos longos são interrompidos e processos independentes iniciados em segundo plano podem continuar ativos.
 - A instalação final, o suporte real ao Windows e o túnel precisam ser verificados no PC do usuário; testes em CI não comprovam acesso remoto.
@@ -67,6 +70,9 @@ Pré-requisitos: Windows 10/11, Python 3.11+, acesso a MCPs personalizados no Ch
 
 - `servidor.py`: ferramentas do MCP.
 - `core.py`: executa PowerShell com autorização local, timeout e limite de saída.
+- `politica.py`: autorizações de uso único e catálogo restrito.
+- `autorizar.py`: confirmação interativa executada localmente no Windows.
+- `tarefas.py`: motor de tarefas P0.
 - `tests/test_core.py`: testes unitários sem comandos no Windows.
 - `requirements.txt`: somente o SDK oficial `mcp>=2,<3`.
 
@@ -117,3 +123,47 @@ persistencia de logs. A mini IA e outros recursos ficam fora do escopo do P0.
 O CI executa os testes de unidade no Linux e no Windows e um smoke test com
 PowerShell real no Windows. Um CI verde nao comprova automaticamente a reconexao
 do plugin no ChatGPT apos atualizar o servidor local.
+
+
+## P1 — Permissoes e confirmacao local
+
+**Negacao por padrao:** `MEU_PC_HABILITADO=1` continua obrigatorio, mas
+nao da mais permissao para executar PowerShell arbitrario. Os MCPs
+`terminal` e `terminal_iniciar` retornam `aprovacao_local_necessaria`
+e uma `assinatura` SHA-256 ate que haja aprovacao local correspondente.
+
+Para realizar uma operacao livre:
+
+1. Solicite ao ChatGPT o **comando exato** (e informe o diretorio, se houver).
+2. **No proprio computador Windows, fora do plugin**, abra PowerShell na pasta
+   do projeto e execute `py autorizar.py` (para um comando de uma linha).
+   Alternativa: `py autorizar.py --arquivo comando.ps1 --diretorio C:/Projetos`.
+3. Cole o texto **exato** do comando, revise o conteudo mostrado e confira
+   a assinatura com a que apareceu no MCP. Digite `AUTORIZAR` localmente.
+4. Repita no ChatGPT a ferramenta/comando original. A autorizacao dura ate
+   **120 segundos** e e consumida por **uma unica tentativa de execucao**,
+   mesmo que essa tentativa falhe antes de iniciar o PowerShell.
+   Uma segunda tentativa exige nova aprovacao.
+
+Para verificacoes comuns, use `consulta_segura(tipo)` com `sistema`,
+`memoria`, `processos` ou `discos`, sem precisar aprovar cada chamada.
+Sao comandos predefinidos, sem parametro PowerShell externo.
+
+A politica nao tenta identificar comandos perigosos por palavras-chave
+— isto seria burlavel com aliases, invocacoes indiretas, scripts ou codificacao.
+Em vez disso, **todo comando livre requer consentimento local**.
+
+**Limites de seguranca:** nao ha sandbox de Windows, isolamento de arquivos
+nem usuario de baixo privilegio forcado. Um unico comando aprovado pode
+realizar varias acoes e criar processos filhos. Outro programa com acesso
+a mesma conta Windows pode interferir nas permissoes do usuario. Nao inicie
+este servico como administrador e nao compartilhe o tunel.
+A protecao se aplica somente ao servidor Python atualizado: o processo
+antigo do MCP continuara com suas regras antigas ate voce atualiza-lo
+e reinicia-lo.
+
+### CI do P1
+
+O CI testa expiracao, negacao por padrao, uso unico, corrida entre
+solicitacoes simultaneas e bloqueio de tarefas; tambem valida uma
+execucao PowerShell real no Windows com aprovacao consumida.
