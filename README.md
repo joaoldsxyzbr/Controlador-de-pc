@@ -198,6 +198,11 @@ Ferramentas MCP:
   de uma tarefa iniciada pelo P0, sem expor stdout/stderr no resultado da
   analise. Quando esta em execucao, retorna `aguardando`.
 
+Em caso de falha, `terminal` e `terminal_consultar` tambem anexam
+automaticamente `analise_ia`, sem executar outra chamada PowerShell.
+Quando o P1 exige aprovacao local, a resposta de bloqueio e preservada
+sem diagnostico automatico.
+
 As respostas incluem `categoria`, `confianca`, `origem`, `explicacao`,
 `proximo_passo` e eventualmente um identificador `consulta_segura` para
 diagnostico **predefinido**; nenhuma resposta e uma ordem de execucao.
@@ -213,7 +218,7 @@ privados ou tentativas de instrucao; sao tratados apenas como dados.
 
 O CI executa testes de categorizacao em portugues/ingles, recusa de
 entradas desconhecidas, entradas excessivas, injeções de instrucao,
-ausencia de vazamento de texto, isolamento da politica P1, integracao
+ausencia de vazamento de texto, isolamento da politica P1, frases separadas\nde validacao do classificador, integracao
 das ferramentas MCP e testes P0/P1 existentes em Linux e Windows.
 Testes com amostras controladas nao comprovam qualidade em todos os
 erros reais do Windows. Antes de expandir o modelo, medir falsos positivos
