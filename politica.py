@@ -42,7 +42,10 @@ def _pasta_aprovacoes() -> Path:
 
 def assinatura(comando: str, diretorio: str) -> str:
     """Vincula autorizacao ao texto exato e diretorio de trabalho normalizado."""
-    payload = json.dumps([comando, os.path.normcase(os.path.normpath(diretorio))],
+    # Windows pode resolver aliases/casing/caminhos curtos ao preparar a execucao.
+    # Autorizar e executar precisam calcular a mesma assinatura canonica.
+    pasta = str(Path(diretorio).expanduser().resolve(strict=False))
+    payload = json.dumps([comando, os.path.normcase(os.path.normpath(pasta))],
                          ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
