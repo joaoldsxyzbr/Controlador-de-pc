@@ -5,7 +5,11 @@ Controle seu próprio Windows pelo ChatGPT usando **Python**, o **SDK MCP oficia
 ## Ferramentas
 
 - **diagnostico**: confirma sistema e disponibilidade do terminal.
-- **terminal**: executa comandos PowerShell com diretório opcional, timeout de 1 a 90 segundos, saída e código de retorno.
+- **terminal**: executa PowerShell sincrono (1 a 90 segundos), com saida, codigo de retorno e duracao.
+- **terminal_iniciar**: executa tarefa em segundo plano (1 a 600 segundos), com ID para acompanhamento.
+- **terminal_consultar**: consulta estado, saida parcial e resultado final da tarefa.
+- **terminal_cancelar**: interrompe tarefa iniciada por este processo MCP.
+- **terminal_tarefas**: lista tarefas recentes sem mostrar comandos ou saidas.
 
 O terminal permite manipular arquivos, abrir programas, consultar processos e executar ferramentas do Windows, sempre com os privilégios do usuário que iniciou o agente.
 
