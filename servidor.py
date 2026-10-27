@@ -5,6 +5,7 @@ from mcp.server import MCPServer
 from core import estado, executar
 import politica
 from mini_ia import analisar as analisar_erro_local
+from avaliacao_ia import gerar_relatorio as qualidade_ia_local
 from tarefas import gerenciador
 
 mcp = MCPServer("Controlador de PC")
@@ -71,6 +72,20 @@ def ia_analisar_erro(texto: str, codigo_saida: int | None = None,
     definitivos. Evite colar segredos no parametro texto.
     """
     return analisar_erro_local(texto, codigo_saida, tempo_esgotado)
+
+
+@mcp.tool()
+def ia_qualidade() -> dict:
+    """Relatorio agregado de qualidade em testes SINTETICOS do P2 e P3.
+
+    Nao coleta dados do PC, nao usa rede e nao executa comandos.
+    As metricas nao representam a taxa de acerto em producao.
+    """
+    try:
+        return {"ok": True, **qualidade_ia_local()}
+    except ValueError:
+        return {"ok": False, "erro": "modelo_invalido",
+                "mensagem": "Os dados de avaliacao precisam de revisao no GitHub."}
 
 
 @mcp.tool()
