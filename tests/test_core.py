@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 import core
+import politica
 
 
 class ProcessoFalso:
@@ -40,6 +41,9 @@ class TesteControle(unittest.TestCase):
         self.windows.start()
         self.addCleanup(self.env.stop)
         self.addCleanup(self.windows.stop)
+        self.permitir = mock.patch.object(politica, "permitir", return_value=True)
+        self.permitir.start()
+        self.addCleanup(self.permitir.stop)
 
     def test_bloqueado_por_padrao(self):
         with mock.patch.dict(os.environ, {"MEU_PC_HABILITADO": "0"}):
