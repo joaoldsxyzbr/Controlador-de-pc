@@ -14,6 +14,12 @@ import mini_ia
 
 CAMINHO_AVALIACAO = Path(__file__).resolve().parent / "dados" / "avaliacao.json"
 
+# Referencia aprovada do primeiro P3. Atualizacoes futuras so devem elevar
+# estes limites apos revisao explicita dos dados de teste e metricas.
+MIN_ACERTOS_P3 = 19
+TOTAL_CONHECIDOS_P3 = 21
+MIN_DESCONHECIDOS_P3 = 5
+
 
 def verificar_separacao(treino, avaliacao) -> None:
     """Impede repeticao literal de casos entre treino e holdout."""
@@ -95,6 +101,14 @@ def sem_regressao(referencia: dict, candidato: dict) -> bool:
             <= referencia["falsos_positivos_desconhecidos"])
 
 
+def preserva_qualidade_p3(candidato: dict) -> bool:
+    """Compara com desempenho P3 ja demonstrado, nao so contra P2."""
+    return (candidato["conhecidos"] == TOTAL_CONHECIDOS_P3
+            and candidato["acertos_conhecidos"] >= MIN_ACERTOS_P3
+            and candidato["desconhecidos"] >= MIN_DESCONHECIDOS_P3
+            and candidato["falsos_positivos_desconhecidos"] == 0)
+
+
 def gerar_relatorio() -> dict:
     extras = aprendizado.carregar_exemplos(set(mini_ia.TREINO))
     casos = _carregar_validacao()
@@ -113,6 +127,7 @@ def gerar_relatorio() -> dict:
         "referencia_p2": referencia,
         "candidato_p3": candidato,
         "sem_regressao": sem_regressao(referencia, candidato),
+        "qualidade_p3_preservada": preserva_qualidade_p3(candidato),
     }
 
 
@@ -123,8 +138,8 @@ def main() -> int:
         print("Erro: datasets invalidos ou sobrepostos.", file=sys.stderr)
         return 2
     print(json.dumps(relatorio, ensure_ascii=False, indent=2, sort_keys=True))
-    if not relatorio["sem_regressao"]:
-        print("Falha: modelo P3 regrediu diante da referencia P2.", file=sys.stderr)
+    if not relatorio["sem_regressao"] or not relatorio["qualidade_p3_preservada"]:
+        print("Falha: modelo P3 nao preservou a qualidade de referencia.", file=sys.stderr)
         return 1
     return 0
 
