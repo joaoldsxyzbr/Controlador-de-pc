@@ -1,18 +1,20 @@
-"""Execucao controlada de PowerShell no computador do proprio usuario.
+"""Execucao de PowerShell no Windows via servidor MCP privado.
 
-A autorizacao ocorre localmente, no ambiente do processo que inicia o MCP.
-O tunnel-client cuida do canal remoto; este modulo nao abre portas.
+Os comandos continuam sendo arbitrarios: nao ha sandbox.
+O usuario habilita o terminal no processo local com MEU_PC_HABILITADO=1.
 """
 
 import base64
 import os
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 LIMITE_COMANDO = 8000
 LIMITE_SAIDA_BYTES = 12000
 TIMEOUT_MAXIMO = 90
+TIMEOUT_TAREFA_MAXIMO = 600
 
 
 def sistema_windows() -> bool:
@@ -20,7 +22,7 @@ def sistema_windows() -> bool:
 
 
 def estado() -> dict:
-    """Exibe um estado minimo sem divulgar usuario, diretorios ou credenciais."""
+    """Diagnostico minimo, sem usuarios, caminhos ou credenciais."""
     return {
         "sistema": "Windows" if os.name == "nt" else "Nao Windows",
         "terminal_habilitado": os.environ.get("MEU_PC_HABILITADO") == "1",
@@ -40,20 +42,20 @@ def _ler_saida(arquivo) -> tuple[str, bool]:
     return conteudo.decode("utf-8", errors="replace"), tamanho > LIMITE_SAIDA_BYTES
 
 
-def executar(comando: str, diretorio: str = "", timeout_segundos: int = 30) -> dict:
-    """Executa comando PowerShell com limites e autorizacao explicita local.
+def preparar(comando: str, diretorio: str = "", timeout_segundos: int = 30,
+             limite_timeout: int = TIMEOUT_MAXIMO) -> dict:
+    """Valida e prepara a execucao sem iniciar nenhum processo.
 
-    O usuario controla inteiramente o comando: nao e sandbox. O processo
-    possui os mesmos acessos do usuario Windows que iniciou o servidor.
+    Retorno interno: contem ambiente e argumentos, nunca deve ser exposto pelo MCP.
     """
     if not sistema_windows():
         return _erro("sistema_nao_suportado", "Este agente foi criado para Windows.")
     if os.environ.get("MEU_PC_HABILITADO") != "1":
-        return _erro("terminal_desabilitado", "Habilite MEU_PC_HABILITADO=1 localmente antes de iniciar o tunel.")
+        return _erro("terminal_desabilitado", "Habilite MEU_PC_HABILITADO=1 no processo local.")
     if not isinstance(comando, str) or not comando.strip() or len(comando) > LIMITE_COMANDO or "\x00" in comando:
         return _erro("comando_invalido", f"Informe um comando PowerShell de ate {LIMITE_COMANDO} caracteres.")
-    if isinstance(timeout_segundos, bool) or not isinstance(timeout_segundos, int) or not 1 <= timeout_segundos <= TIMEOUT_MAXIMO:
-        return _erro("timeout_invalido", f"O tempo deve ficar entre 1 e {TIMEOUT_MAXIMO} segundos.")
+    if isinstance(timeout_segundos, bool) or not isinstance(timeout_segundos, int) or not 1 <= timeout_segundos <= limite_timeout:
+        return _erro("timeout_invalido", f"O tempo deve ficar entre 1 e {limite_timeout} segundos.")
     if not isinstance(diretorio, str) or "\x00" in diretorio:
         return _erro("diretorio_invalido", "Diretorio informado e invalido.")
     try:
@@ -63,10 +65,9 @@ def executar(comando: str, diretorio: str = "", timeout_segundos: int = 30) -> d
     except (OSError, ValueError):
         return _erro("diretorio_invalido", "Nao foi possivel acessar o diretorio de trabalho.")
 
-    # EncodedCommand evita erros de quoting e preserva caracteres especiais.
-    # A codificacao nao limita o poder do comando: use apenas com um usuario confiavel.
     script = (
         "$ErrorActionPreference = 'Stop'\n"
+        "$ProgressPreference = 'SilentlyContinue'\n"
         "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()\n"
         "$OutputEncoding = [Console]::OutputEncoding\n"
         + comando
@@ -75,41 +76,57 @@ def executar(comando: str, diretorio: str = "", timeout_segundos: int = 30) -> d
     argumentos = ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", codificado]
 
     ambiente = os.environ.copy()
-    # Uma operacao de terminal nao precisa da chave que controla o tunel.
-    for segredo in ("CONTROL_PLANE_API_KEY", "CONTROL_PLANE_TUNNEL_ID", "OPENAI_API_KEY", "OPENAI_ADMIN_KEY", "MEU_PC_HABILITADO"):
+    for segredo in ("CONTROL_PLANE_API_KEY", "CONTROL_PLANE_TUNNEL_ID",
+                    "OPENAI_API_KEY", "OPENAI_ADMIN_KEY", "MEU_PC_HABILITADO"):
         ambiente.pop(segredo, None)
 
+    return {"ok": True, "argumentos": argumentos, "pasta": str(pasta), "ambiente": ambiente}
+
+
+def encerrar_arvore(processo) -> None:
+    """Tenta encerrar processo e filhos Windows; nunca aceita PID arbitrario."""
+    if processo.poll() is not None:
+        return
+    try:
+        subprocess.run(
+            ["taskkill", "/PID", str(processo.pid), "/T", "/F"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, timeout=5, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        pass
+    try:
+        if processo.poll() is None:
+            processo.kill()
+    except (OSError, ProcessLookupError):
+        pass
+
+
+def executar(comando: str, diretorio: str = "", timeout_segundos: int = 30) -> dict:
+    """Modo sincrono, compativel com a ferramenta MCP terminal existente."""
+    preparado = preparar(comando, diretorio, timeout_segundos)
+    if not preparado["ok"]:
+        return preparado
+
+    inicio = time.monotonic()
     try:
         with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
             processo = subprocess.Popen(
-                argumentos,
-                cwd=str(pasta),
-                env=ambiente,
-                stdin=subprocess.DEVNULL,
-                stdout=stdout,
-                stderr=stderr,
-                shell=False,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                preparado["argumentos"],
+                cwd=preparado["pasta"], env=preparado["ambiente"],
+                stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr,
+                shell=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             expirou = False
             try:
                 processo.wait(timeout=timeout_segundos)
             except subprocess.TimeoutExpired:
                 expirou = True
-                # Windows: encerra tambem os processos filhos, quando possivel.
-                subprocess.run(
-                    ["taskkill", "/PID", str(processo.pid), "/T", "/F"],
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    timeout=5,
-                    check=False,
-                )
+                encerrar_arvore(processo)
                 try:
-                    processo.kill()
-                except ProcessLookupError:
-                    pass  # O taskkill ja pode ter encerrado o processo.
-                processo.wait(timeout=5)
+                    processo.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    return _erro("falha_encerramento", "Nao foi possivel confirmar o encerramento do processo.")
 
             texto_saida, truncada_saida = _ler_saida(stdout)
             texto_erro, truncado_erro = _ler_saida(stderr)
@@ -120,7 +137,7 @@ def executar(comando: str, diretorio: str = "", timeout_segundos: int = 30) -> d
                 "stderr": texto_erro,
                 "saida_truncada": truncada_saida or truncado_erro,
                 "tempo_esgotado": expirou,
+                "duracao_ms": int((time.monotonic() - inicio) * 1000),
             }
     except (OSError, subprocess.SubprocessError) as exc:
-        # Erros de inicializacao e timeout de encerramento nao retornam dados sigilosos.
-        return _erro("falha_execucao", f"Falha ao iniciar ou finalizar PowerShell: {type(exc).__name__}.")
+        return _erro("falha_execucao", f"Falha no PowerShell: {type(exc).__name__}.")
